@@ -11,9 +11,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Send Discord Webhook
         env:
-          WEBHOOK_URL: https://discord.com/api/webhooks/your_webhook_url_here
+          WEBHOOK_URL: https://discord.com/api/webhooks/1395040633781227581/RRMTPOrejehaqOupmTN2qGjFdgZqT5ZlpsjY0wkKBB8vNYV_2hjNNnbTgtfWCMJQF_eR
           BOT_AVATAR: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png
           BOT_NAME: "GitHub Actions 🚀"
         run: |
@@ -24,15 +27,17 @@ jobs:
           SHA="${{ github.sha }}"
           TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           ACTOR_AVATAR="https://github.com/${ACTOR}.png"
-          COMMIT_MSG="$(git log -1 --pretty=%B)"
-          COMMIT_DATE="$(git log -1 --pretty=%cd --date=iso-strict)"
-          FILES_MODIFIED="$(git diff-tree --no-commit-id --name-only -r $SHA | paste -sd ', ' -)"
+
+          # fallback if git fails
+          COMMIT_MSG=$(git log -1 --pretty=%B || echo "${{ github.event.head_commit.message }}")
+          COMMIT_DATE=$(git log -1 --pretty=%cd --date=iso-strict || echo "${TS}")
+          FILES_MODIFIED=$(git diff-tree --no-commit-id --name-only -r $SHA | paste -sd ', ' - || echo "Unavailable")
 
           TITLE="GitHub Event: ${EVENT}"
 
           if [ "$EVENT" == "push" ]; then
             COLOR=3066993
-            DESCRIPTION="**Commit Message:** ${COMMIT_MSG}\n\n**Commit ID:** [\`${SHA::7}\`](https://github.com/${REPO}/commit/${SHA})  \n**Branch:** \`${REF#refs/heads/}\`\n\n**Files Modified:** ${FILES_MODIFIED:-None}\n\n**Commit Date:** ${COMMIT_DATE}\n\n**Repository:** [${REPO}](https://github.com/${REPO})\n**Repository Owner:** [${ACTOR}](https://github.com/${ACTOR})"
+            DESCRIPTION="**Commit Message:** ${COMMIT_MSG}\n\n**Commit ID:** [\`${SHA::7}\`](https://github.com/${REPO}/commit/${SHA})  \n**Branch:** \`${REF#refs/heads/}\`\n\n**Files Modified:** ${FILES_MODIFIED}\n\n**Commit Date:** ${COMMIT_DATE}\n\n**Repository:** [${REPO}](https://github.com/${REPO})\n**Repository Owner:** [${ACTOR}](https://github.com/${ACTOR})"
           elif [ "$EVENT" == "pull_request" ]; then
             PR_NUMBER="${{ github.event.pull_request.number }}"
             PR_TITLE="${{ github.event.pull_request.title }}"
