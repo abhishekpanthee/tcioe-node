@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Send Discord Webhook
         env:
-          WEBHOOK_URL: https://discord.com/api/webhooks/1395040633781227581/RRMTPOrejehaqOupmTN2qGjFdgZqT5ZlpsjY0wkKBB8vNYV_2hjNNnbTgtfWCMJQF_eR
+          WEBHOOK_URL: https://discord.com/api/webhooks/your_webhook_url_here
           BOT_AVATAR: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png
           BOT_NAME: "GitHub Actions 🚀"
         run: |
@@ -24,40 +24,40 @@ jobs:
           SHA="${{ github.sha }}"
           TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           ACTOR_AVATAR="https://github.com/${ACTOR}.png"
+          COMMIT_MSG="$(git log -1 --pretty=%B)"
+          COMMIT_DATE="$(git log -1 --pretty=%cd --date=iso-strict)"
+          FILES_MODIFIED="$(git diff-tree --no-commit-id --name-only -r $SHA | paste -sd ', ' -)"
+
+          TITLE="GitHub Event: ${EVENT}"
 
           if [ "$EVENT" == "push" ]; then
-            COLOR=3066993 # green
-            TITLE="📦 New Push to $REPO"
-            DESC="**Branch:** \`${REF#refs/heads/}\`\n**Pushed by:** [${ACTOR}](https://github.com/${ACTOR})\n**[View Commit →](https://github.com/${REPO}/commit/${SHA})**"
+            COLOR=3066993
+            DESCRIPTION="**Commit Message:** ${COMMIT_MSG}\n\n**Commit ID:** [\`${SHA::7}\`](https://github.com/${REPO}/commit/${SHA})  \n**Branch:** \`${REF#refs/heads/}\`\n\n**Files Modified:** ${FILES_MODIFIED:-None}\n\n**Commit Date:** ${COMMIT_DATE}\n\n**Repository:** [${REPO}](https://github.com/${REPO})\n**Repository Owner:** [${ACTOR}](https://github.com/${ACTOR})"
           elif [ "$EVENT" == "pull_request" ]; then
             PR_NUMBER="${{ github.event.pull_request.number }}"
             PR_TITLE="${{ github.event.pull_request.title }}"
-            COLOR=3447003 # blue
-            TITLE="🔀 Pull Request in $REPO"
-            DESC="**PR:** [#${PR_NUMBER} ${PR_TITLE}](https://github.com/${REPO}/pull/${PR_NUMBER})\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
+            COLOR=3447003
+            DESCRIPTION="**PR:** [#${PR_NUMBER} ${PR_TITLE}](https://github.com/${REPO}/pull/${PR_NUMBER})\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
           elif [ "$EVENT" == "create" ]; then
-            COLOR=10181046 # purple
-            TITLE="🌱 New ${GITHUB_EVENT_REF_TYPE:-branch/tag} Created"
-            DESC="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
+            COLOR=10181046
+            DESCRIPTION="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
           elif [ "$EVENT" == "delete" ]; then
-            COLOR=15158332 # red
-            TITLE="🔥 ${GITHUB_EVENT_REF_TYPE:-branch/tag} Deleted"
-            DESC="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
+            COLOR=15158332
+            DESCRIPTION="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
           else
             COLOR=0
-            TITLE="📢 Unknown Event"
-            DESC="An unknown event occurred in $REPO by [${ACTOR}](https://github.com/${ACTOR})"
+            DESCRIPTION="An unknown event occurred in $REPO by [${ACTOR}](https://github.com/${ACTOR})"
           fi
 
           PAYLOAD=$(jq -n \
             --arg username "$BOT_NAME" \
             --arg avatar_url "$BOT_AVATAR" \
+            --arg author_name "$ACTOR" \
+            --arg author_icon "$ACTOR_AVATAR" \
             --arg title "$TITLE" \
-            --arg description "$DESC" \
+            --arg description "$DESCRIPTION" \
             --arg color "$COLOR" \
             --arg timestamp "$TS" \
-            --arg actor_name "$ACTOR" \
-            --arg actor_icon "$ACTOR_AVATAR" \
             '{
               username: $username,
               avatar_url: $avatar_url,
@@ -67,12 +67,12 @@ jobs:
                 color: ($color | tonumber),
                 timestamp: $timestamp,
                 author: {
-                  name: $actor_name,
-                  url: ("https://github.com/" + $actor_name),
-                  icon_url: $actor_icon
+                  name: $author_name,
+                  url: ("https://github.com/" + $author_name),
+                  icon_url: $author_icon
                 },
                 footer: {
-                  text: "GitHub → Discord Webhook"
+                  text: "Repository Owner: " + $author_name
                 }
               }]
             }')
