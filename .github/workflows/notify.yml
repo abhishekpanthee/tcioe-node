@@ -1,0 +1,80 @@
+name: Notify
+
+on:
+  push:
+  create:
+  delete:
+  pull_request:
+
+jobs:
+  discord-notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Discord Webhook
+        env:
+          WEBHOOK_URL: https://discord.com/api/webhooks/1395040633781227581/RRMTPOrejehaqOupmTN2qGjFdgZqT5ZlpsjY0wkKBB8vNYV_2hjNNnbTgtfWCMJQF_eR
+          BOT_AVATAR: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png
+          BOT_NAME: "GitHub Actions 🚀"
+        run: |
+          EVENT="${{ github.event_name }}"
+          ACTOR="${{ github.actor }}"
+          REPO="${{ github.repository }}"
+          REF="${{ github.ref }}"
+          SHA="${{ github.sha }}"
+          TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          ACTOR_AVATAR="https://github.com/${ACTOR}.png"
+
+          if [ "$EVENT" == "push" ]; then
+            COLOR=3066993 # green
+            TITLE="📦 New Push to $REPO"
+            DESC="**Branch:** \`${REF#refs/heads/}\`\n**Pushed by:** [${ACTOR}](https://github.com/${ACTOR})\n**[View Commit →](https://github.com/${REPO}/commit/${SHA})**"
+          elif [ "$EVENT" == "pull_request" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            COLOR=3447003 # blue
+            TITLE="🔀 Pull Request in $REPO"
+            DESC="**PR:** [#${PR_NUMBER} ${PR_TITLE}](https://github.com/${REPO}/pull/${PR_NUMBER})\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
+          elif [ "$EVENT" == "create" ]; then
+            COLOR=10181046 # purple
+            TITLE="🌱 New ${GITHUB_EVENT_REF_TYPE:-branch/tag} Created"
+            DESC="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
+          elif [ "$EVENT" == "delete" ]; then
+            COLOR=15158332 # red
+            TITLE="🔥 ${GITHUB_EVENT_REF_TYPE:-branch/tag} Deleted"
+            DESC="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
+          else
+            COLOR=0
+            TITLE="📢 Unknown Event"
+            DESC="An unknown event occurred in $REPO by [${ACTOR}](https://github.com/${ACTOR})"
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg username "$BOT_NAME" \
+            --arg avatar_url "$BOT_AVATAR" \
+            --arg title "$TITLE" \
+            --arg description "$DESC" \
+            --arg color "$COLOR" \
+            --arg timestamp "$TS" \
+            --arg actor_name "$ACTOR" \
+            --arg actor_icon "$ACTOR_AVATAR" \
+            '{
+              username: $username,
+              avatar_url: $avatar_url,
+              embeds: [{
+                title: $title,
+                description: $description,
+                color: ($color | tonumber),
+                timestamp: $timestamp,
+                author: {
+                  name: $actor_name,
+                  url: ("https://github.com/" + $actor_name),
+                  icon_url: $actor_icon
+                },
+                footer: {
+                  text: "GitHub → Discord Webhook"
+                }
+              }]
+            }')
+
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
