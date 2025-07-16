@@ -1,85 +1,79 @@
-name: Notify
+name: Discord Notifications via Google Apps Script
 
 on:
   push:
-  create:
-  delete:
   pull_request:
+    types: [opened, closed, reopened, synchronize]
+  issues:
+    types: [opened, closed, reopened]
+  release:
+    types: [published]
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
 
 jobs:
-  discord-notify:
+  notify-discord:
     runs-on: ubuntu-latest
-
+    if: always()
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Send Discord Webhook
-        env:
-          WEBHOOK_URL: https://discord.com/api/webhooks/1395040633781227581/RRMTPOrejehaqOupmTN2qGjFdgZqT5ZlpsjY0wkKBB8vNYV_2hjNNnbTgtfWCMJQF_eR
-          BOT_AVATAR: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png
-          BOT_NAME: "GitHub Actions 🚀"
-        run: |
-          EVENT="${{ github.event_name }}"
-          ACTOR="${{ github.actor }}"
-          REPO="${{ github.repository }}"
-          REF="${{ github.ref }}"
-          SHA="${{ github.sha }}"
-          TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          ACTOR_AVATAR="https://github.com/${ACTOR}.png"
-
-          # fallback if git fails
-          COMMIT_MSG=$(git log -1 --pretty=%B || echo "${{ github.event.head_commit.message }}")
-          COMMIT_DATE=$(git log -1 --pretty=%cd --date=iso-strict || echo "${TS}")
-          FILES_MODIFIED=$(git diff-tree --no-commit-id --name-only -r $SHA | paste -sd ', ' - || echo "Unavailable")
-
-          TITLE="GitHub Event: ${EVENT}"
-
-          if [ "$EVENT" == "push" ]; then
-            COLOR=3066993
-            DESCRIPTION="**Commit Message:** ${COMMIT_MSG}\n\n**Commit ID:** [\`${SHA::7}\`](https://github.com/${REPO}/commit/${SHA})  \n**Branch:** \`${REF#refs/heads/}\`\n\n**Files Modified:** ${FILES_MODIFIED}\n\n**Commit Date:** ${COMMIT_DATE}\n\n**Repository:** [${REPO}](https://github.com/${REPO})\n**Repository Owner:** [${ACTOR}](https://github.com/${ACTOR})"
-          elif [ "$EVENT" == "pull_request" ]; then
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            COLOR=3447003
-            DESCRIPTION="**PR:** [#${PR_NUMBER} ${PR_TITLE}](https://github.com/${REPO}/pull/${PR_NUMBER})\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
-          elif [ "$EVENT" == "create" ]; then
-            COLOR=10181046
-            DESCRIPTION="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
-          elif [ "$EVENT" == "delete" ]; then
-            COLOR=15158332
-            DESCRIPTION="**${GITHUB_EVENT_REF_TYPE:-Branch} Name:** \`${REF#refs/heads/}\`\n**By:** [${ACTOR}](https://github.com/${ACTOR})"
-          else
-            COLOR=0
-            DESCRIPTION="An unknown event occurred in $REPO by [${ACTOR}](https://github.com/${ACTOR})"
-          fi
-
-          PAYLOAD=$(jq -n \
-            --arg username "$BOT_NAME" \
-            --arg avatar_url "$BOT_AVATAR" \
-            --arg author_name "$ACTOR" \
-            --arg author_icon "$ACTOR_AVATAR" \
-            --arg title "$TITLE" \
-            --arg description "$DESCRIPTION" \
-            --arg color "$COLOR" \
-            --arg timestamp "$TS" \
-            '{
-              username: $username,
-              avatar_url: $avatar_url,
-              embeds: [{
-                title: $title,
-                description: $description,
-                color: ($color | tonumber),
-                timestamp: $timestamp,
-                author: {
-                  name: $author_name,
-                  url: ("https://github.com/" + $author_name),
-                  icon_url: $author_icon
-                },
-                footer: {
-                  text: "Repository Owner: " + $author_name
-                }
-              }]
-            }')
-
-          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Send notification to Google Apps Script
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const gasUrl = 'https://script.google.com/macros/s/AKfycbwz3uWv1m8VjP9rGmrbubZCE8vxXXbgspDV28lAcm_UP7501lCPHd_An_ulQG4qBhgY/exec';
+          
+          // Prepare the payload with all necessary GitHub context
+          const payload = {
+            ...context.payload,
+            event_name: context.eventName,
+            sha: context.sha,
+            ref: context.ref,
+            workflow: context.workflow,
+            action: context.action,
+            actor: context.actor,
+            repository: context.payload.repository
+          };
+          
+          // Add GitHub event type header
+          const headers = {
+            'Content-Type': 'application/json',
+            'X-GitHub-Event': context.eventName,
+            'X-GitHub-Delivery': context.runId.toString(),
+            'X-Hub-Signature': 'sha1=' + context.sha
+          };
+          
+          try {
+            const response = await fetch(gasUrl, {
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const result = await response.text();
+            console.log('Google Apps Script response:', result);
+            
+            // Log success
+            console.log(`✅ Successfully sent ${context.eventName} notification to Discord via Google Apps Script`);
+            
+          } catch (error) {
+            console.error('❌ Failed to send notification:', error);
+            throw error;
+          }
+     
+        
+    - name: Log event details
+      run: |
+        echo "Event: ${{ github.event_name }}"
+        echo "Repository: ${{ github.repository }}"
+        echo "Actor: ${{ github.actor }}"
+        echo "Ref: ${{ github.ref }}"
+        echo "SHA: ${{ github.sha }}"
